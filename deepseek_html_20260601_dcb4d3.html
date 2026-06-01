@@ -152,36 +152,27 @@
     </div>
 </div>
 
-<script>
+<script type="module">
+    import {
+        rectCollide, clampEntity, randomRange, generateGems as _generateGems,
+        stepEnemy, computePlayerMove,
+        WIDTH, HEIGHT, PLAYER_SIZE, ENEMY_SIZE, GEM_SIZE, PLAYER_SPEED, ENEMY_SPEED,
+    } from './game-logic.js';
+
     (function(){
         // ---------- 画布元素 ----------
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        // 关闭抗锯齿，保持锐利像素边缘
         ctx.imageSmoothingEnabled = false;
         
-        // ---------- 游戏配置 ----------
-        const WIDTH = 800;
-        const HEIGHT = 600;
-        
-        // 实体尺寸 (像素块风格)
-        const PLAYER_SIZE = 26;
-        const ENEMY_SIZE = 26;
-        const GEM_SIZE = 16;
-        
-        // 移动速度 (像素/帧)
-        const PLAYER_SPEED = 4.6;
-        const ENEMY_SPEED = 2.8;
-        
         // ---------- 全局状态 ----------
-        let gameActive = true;      // 游戏是否进行中 (false时不可移动/碰撞/收集)
+        let gameActive = true;
         let winFlag = false;
         let loseFlag = false;
-        let score = 0;              // 收集星星数量
-        let gems = [];             // 星星数组 {x, y, w, h}
-        let enemies = [];          // 敌人数组 {x, y, w, h}
+        let score = 0;
+        let gems = [];
+        let enemies = [];
         
-        // 玩家对象
         let player = {
             x: WIDTH/2 - PLAYER_SIZE/2,
             y: HEIGHT/2 - PLAYER_SIZE/2,
@@ -190,103 +181,10 @@
             speed: PLAYER_SPEED
         };
         
-        // 键盘控制标志
         const keys = {
             ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
             w: false, s: false, a: false, d: false
         };
-        
-        // ---------- 辅助函数 ----------
-        function rectCollide(r1, r2) {
-            return !(r2.x > r1.x + r1.w ||
-                r2.x + r2.w < r1.x ||
-                r2.y > r1.y + r1.h ||
-                r2.y + r2.h < r1.y);
-        }
-        
-        // 边界限制 (确保对象不超出画布)
-        function clampEntity(entity, width, height) {
-            if(entity.x < 0) entity.x = 0;
-            if(entity.y < 0) entity.y = 0;
-            if(entity.x + entity.w > width) entity.x = width - entity.w;
-            if(entity.y + entity.h > height) entity.y = height - entity.h;
-        }
-        
-        // 生成随机整数(min,max] 含头含尾
-        function randomRange(min, max) {
-            return Math.floor(Math.random() * (max - min + 1) + min);
-        }
-        
-        // 检测新生成宝石是否与任何实体 (玩家, 敌人, 已有宝石) 重叠
-        function isOverlapWithAny(newGem, entitiesList, extraCheck) {
-            // 与玩家重叠
-            if(rectCollide(newGem, {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE})) return true;
-            // 与所有敌人重叠
-            for(let e of enemies) {
-                if(rectCollide(newGem, {x: e.x, y: e.y, w: ENEMY_SIZE, h: ENEMY_SIZE})) return true;
-            }
-            // 与已有宝石重叠
-            for(let g of gems) {
-                if(rectCollide(newGem, g)) return true;
-            }
-            return false;
-        }
-        
-        // 生成指定数量的星星 (避开玩家&敌人, 并且不超出边界)
-        function generateGems(count) {
-            const newGems = [];
-            const maxAttempts = 4000;
-            let attempts = 0;
-            while(newGems.length < count && attempts < maxAttempts) {
-                const gemX = randomRange(10, WIDTH - GEM_SIZE - 10);
-                const gemY = randomRange(10, HEIGHT - GEM_SIZE - 10);
-                const candidateGem = { x: gemX, y: gemY, w: GEM_SIZE, h: GEM_SIZE };
-                // 避免重叠玩家 / 敌人 / 已有宝石
-                let collide = false;
-                // 与玩家碰撞
-                if(rectCollide(candidateGem, {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE})) collide = true;
-                // 与现有敌人碰撞
-                for(let e of enemies) {
-                    if(rectCollide(candidateGem, {x: e.x, y: e.y, w: ENEMY_SIZE, h: ENEMY_SIZE})) {
-                        collide = true;
-                        break;
-                    }
-                }
-                // 与已生成的宝石碰撞
-                for(let g of newGems) {
-                    if(rectCollide(candidateGem, g)) {
-                        collide = true;
-                        break;
-                    }
-                }
-                if(!collide) {
-                    newGems.push(candidateGem);
-                }
-                attempts++;
-            }
-            // 万一尝试次数过多仍有空缺，暴力补位（放在空旷角落）
-            if(newGems.length < count) {
-                for(let i = newGems.length; i < count; i++) {
-                    let placed = false;
-                    for(let tryY = 60; tryY < HEIGHT-60 && !placed; tryY += 35) {
-                        for(let tryX = 60; tryX < WIDTH-60 && !placed; tryX += 35) {
-                            const fallbackGem = { x: tryX, y: tryY, w: GEM_SIZE, h: GEM_SIZE };
-                            let coll = false;
-                            if(rectCollide(fallbackGem, {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE})) coll = true;
-                            for(let e of enemies) if(rectCollide(fallbackGem, {x: e.x, y: e.y, w: ENEMY_SIZE, h: ENEMY_SIZE})) coll=true;
-                            for(let g of newGems) if(rectCollide(fallbackGem, g)) coll=true;
-                            if(!coll) {
-                                newGems.push(fallbackGem);
-                                placed = true;
-                                break;
-                            }
-                        }
-                    }
-                    if(!placed) newGems.push({ x: 100 + i*40, y: 100, w: GEM_SIZE, h: GEM_SIZE }); // 最终保底
-                }
-            }
-            return newGems;
-        }
         
         // ---------- 重置游戏 ----------
         function resetGame() {
@@ -319,7 +217,7 @@
             
             // 生成星星数量 (共8颗)
             const GEM_COUNT = 8;
-            gems = generateGems(GEM_COUNT);
+            gems = _generateGems(GEM_COUNT, player, enemies);
             
             // 二次保险: 确保所有星星不与玩家/敌人初始重叠
             gems = gems.filter(g => {
@@ -330,7 +228,7 @@
             // 如果过滤后数量不足, 补充
             if(gems.length < GEM_COUNT) {
                 let need = GEM_COUNT - gems.length;
-                let extra = generateGems(need);
+                let extra = _generateGems(need, player, enemies);
                 gems.push(...extra);
             }
             // 限制最多16个以免溢出
@@ -410,48 +308,18 @@
         // ---------- 敌人AI: 向玩家方向追逐 (像素风简单追逐) ----------
         function updateEnemies() {
             if(!gameActive) return;
-            const playerCenterX = player.x + PLAYER_SIZE/2;
-            const playerCenterY = player.y + PLAYER_SIZE/2;
-            
             for(let i = 0; i < enemies.length; i++) {
-                const e = enemies[i];
-                const enemyCenterX = e.x + ENEMY_SIZE/2;
-                const enemyCenterY = e.y + ENEMY_SIZE/2;
-                
-                let dx = playerCenterX - enemyCenterX;
-                let dy = playerCenterY - enemyCenterY;
-                const length = Math.hypot(dx, dy);
-                if(length > 0.01) {
-                    dx /= length;
-                    dy /= length;
-                }
-                // 移动
-                e.x += dx * ENEMY_SPEED;
-                e.y += dy * ENEMY_SPEED;
-                // 边界限制
-                clampEntity(e, WIDTH, HEIGHT);
+                stepEnemy(enemies[i], player);
             }
         }
         
         // ---------- 玩家移动 (基于键盘) ----------
         function updatePlayer() {
             if(!gameActive) return;
-            let moveX = 0, moveY = 0;
-            // 方向键 + WASD
-            if(keys.ArrowUp || keys.w) moveY -= 1;
-            if(keys.ArrowDown || keys.s) moveY += 1;
-            if(keys.ArrowLeft || keys.a) moveX -= 1;
-            if(keys.ArrowRight || keys.d) moveX += 1;
-            
-            if(moveX !== 0 || moveY !== 0) {
-                const len = Math.hypot(moveX, moveY);
-                moveX = moveX / len;
-                moveY = moveY / len;
-                player.x += moveX * PLAYER_SPEED;
-                player.y += moveY * PLAYER_SPEED;
-                // 边界限制
-                clampEntity(player, WIDTH, HEIGHT);
-            }
+            const pos = computePlayerMove(player, keys);
+            player.x = pos.x;
+            player.y = pos.y;
+            clampEntity(player, WIDTH, HEIGHT);
         }
         
         // ---------- 每一帧逻辑更新 ----------

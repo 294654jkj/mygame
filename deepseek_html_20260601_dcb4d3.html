@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>像素冒险者 - 星星收集者</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background: linear-gradient(145deg, #0a0f1e 0%, #0c1222 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', 'Press Start 2P', 'VT323', monospace;
+            padding: 20px;
+        }
+
+        .game-container {
+            background: #1a1f2e;
+            padding: 20px;
+            border-radius: 24px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+            border: 1px solid #2d3348;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 0 0 4px #0b0e16, 0 0 0 8px #2a2f42;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            cursor: none;
+        }
+
+        .info-panel {
+            margin-top: 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 20px;
+            background: #0f1320;
+            padding: 12px 20px;
+            border-radius: 16px;
+            border: 1px solid #2e3447;
+            flex-wrap: wrap;
+        }
+
+        .score-box, .gems-box {
+            background: #05070c;
+            padding: 6px 16px;
+            border-radius: 32px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            font-size: 26px;
+            letter-spacing: 2px;
+            color: #f7d44a;
+            text-shadow: 0 0 3px #ffb347;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 0 #3a405b;
+        }
+
+        .gems-box {
+            color: #6effb0;
+            text-shadow: 0 0 3px #26ff9e;
+        }
+
+        .status {
+            background: #0b0f1a;
+            padding: 6px 20px;
+            border-radius: 32px;
+            font-size: 20px;
+            font-weight: bold;
+            font-family: monospace;
+            color: #b9c7ff;
+            text-transform: uppercase;
+            border-left: 3px solid #f7d44a;
+        }
+
+        button {
+            background: #2a2f44;
+            border: none;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            font-size: 18px;
+            padding: 6px 18px;
+            border-radius: 32px;
+            color: #f0f2ff;
+            cursor: pointer;
+            transition: all 0.08s linear;
+            box-shadow: 0 3px 0 #111520;
+            letter-spacing: 1px;
+        }
+
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #111520;
+        }
+
+        .controls-tip {
+            font-size: 12px;
+            color: #7e85a3;
+            background: #05070c80;
+            padding: 5px 12px;
+            border-radius: 24px;
+            display: flex;
+            gap: 12px;
+            font-weight: bold;
+        }
+
+        .controls-tip span {
+            background: #1e2338;
+            padding: 2px 8px;
+            border-radius: 20px;
+            color: #ffde9c;
+        }
+
+        @keyframes pixelPulse {
+            0% { opacity: 0.7; text-shadow: 0 0 0px #ffcc66; }
+            100% { opacity: 1; text-shadow: 0 0 4px #ffcc66; }
+        }
+
+        .status.win {
+            color: #a5ffb4;
+            animation: pixelPulse 0.6s infinite alternate;
+        }
+        .status.lose {
+            color: #ff8a7a;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="info-panel">
+            <div class="score-box">⭐ 得分: <span id="scoreValue">0</span></div>
+            <div class="gems-box">💎 剩余星星: <span id="gemsLeft">0</span></div>
+            <div class="status" id="gameStatusText">▶ 冒险中</div>
+            <button id="resetButton">🔄 重来</button>
+        </div>
+        <div class="controls-tip">
+            🎮 <span>W/A/S/D</span> 或 <span>⬆ ⬇ ⬅ ➡</span> &nbsp;&nbsp;| &nbsp;⚡ 避开红色魔像 &nbsp;|&nbsp; ✨ 集齐所有星星获胜
+        </div>
+    </div>
+</div>
+
+<script>
+    (function(){
+        // ---------- 画布元素 ----------
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        // 关闭抗锯齿，保持锐利像素边缘
+        ctx.imageSmoothingEnabled = false;
+        
+        // ---------- 游戏配置 ----------
+        const WIDTH = 800;
+        const HEIGHT = 600;
+        
+        // 实体尺寸 (像素块风格)
+        const PLAYER_SIZE = 26;
+        const ENEMY_SIZE = 26;
+        const GEM_SIZE = 16;
+        
+        // 移动速度 (像素/帧)
+        const PLAYER_SPEED = 4.6;
+        const ENEMY_SPEED = 2.8;
+        
+        // ---------- 全局状态 ----------
+        let gameActive = true;      // 游戏是否进行中 (false时不可移动/碰撞/收集)
+        let winFlag = false;
+        let loseFlag = false;
+        let score = 0;              // 收集星星数量
+        let gems = [];             // 星星数组 {x, y, w, h}
+        let enemies = [];          // 敌人数组 {x, y, w, h}
+        
+        // 玩家对象
+        let player = {
+            x: WIDTH/2 - PLAYER_SIZE/2,
+            y: HEIGHT/2 - PLAYER_SIZE/2,
+            w: PLAYER_SIZE,
+            h: PLAYER_SIZE,
+            speed: PLAYER_SPEED
+        };
+        
+        // 键盘控制标志
+        const keys = {
+            ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+            w: false, s: false, a: false, d: false
+        };
+        
+        // ---------- 辅助函数 ----------
+        function rectCollide(r1, r2) {
+            return !(r2.x > r1.x + r1.w ||
+                r2.x + r2.w < r1.x ||
+                r2.y > r1.y + r1.h ||
+                r2.y + r2.h < r1.y);
+        }
+        
+        // 边界限制 (确保对象不超出画布)
+        function clampEntity(entity, width, height) {
+            if(entity.x < 0) entity.x = 0;
+            if(entity.y < 0) entity.y = 0;
+            if(entity.x + entity.w > width) entity.x = width - entity.w;
+            if(entity.y + entity.h > height) entity.y = height - entity.h;
+        }
+        
+        // 生成随机整数(min,max] 含头含尾
+        function randomRange(min, max) {
+            return Math.floor(Math.random() * (max - min + 1) + min);
+        }
+        
+        // 检测新生成宝石是否与任何实体 (玩家, 敌人, 已有宝石) 重叠
+        function isOverlapWithAny(newGem, entitiesList, extraCheck) {
+            // 与玩家重叠
+            if(rectCollide(newGem, {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE})) return true;
+            // 与所有敌人重叠
+            for(let e of enemies) {
+                if(rectCollide(newGem, {x: e.x, y: e.y, w: ENEMY_SIZE, h: ENEMY_SIZE})) return true;
+            }
+            // 与已有宝石重叠
+            for(let g of gems) {
+                if(rectCollide(newGem, g)) return true;
+            }
+            return false;
+        }
+        
+        // 生成指定数量的星星 (避开玩家&敌人, 并且不超出边界)
+        function generateGems(count) {
+            const newGems = [];
+            const maxAttempts = 4000;
+            let attempts = 0;
+            while(newGems.length < count && attempts < maxAttempts) {
+                const gemX = randomRange(10, WIDTH - GEM_SIZE - 10);
+                const gemY = randomRange(10, HEIGHT - GEM_SIZE - 10);
+                const candidateGem = { x: gemX, y: gemY, w: GEM_SIZE, h: GEM_SIZE };
+                // 避免重叠玩家 / 敌人 / 已有宝石
+                let collide = false;
+                // 与玩家碰撞
+                if(rectCollide(candidateGem, {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE})) collide = true;
+                // 与现有敌人碰撞
+                for(let e of enemies) {
+                    if(rectCollide(candidateGem, {x: e.x, y: e.y, w: ENEMY_SIZE, h: ENEMY_SIZE})) {
+                        collide = true;
+                        break;
+                    }
+                }
+                // 与已生成的宝石碰撞
+                for(let g of newGems) {
+                    if(rectCollide(candidateGem, g)) {
+                        collide = true;
+                        break;
+                    }
+                }
+                if(!collide) {
+                    newGems.push(candidateGem);
+                }
+                attempts++;
+            }
+            // 万一尝试次数过多仍有空缺，暴力补位（放在空旷角落）
+            if(newGems.length < count) {
+                for(let i = newGems.length; i < count; i++) {
+                    let placed = false;
+                    for(let tryY = 60; tryY < HEIGHT-60 && !placed; tryY += 35) {
+                        for(let tryX = 60; tryX < WIDTH-60 && !placed; tryX += 35) {
+                            const fallbackGem = { x: tryX, y: tryY, w: GEM_SIZE, h: GEM_SIZE };
+                            let coll = false;
+                            if(rectCollide(fallbackGem, {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE})) coll = true;
+                            for(let e of enemies) if(rectCollide(fallbackGem, {x: e.x, y: e.y, w: ENEMY_SIZE, h: ENEMY_SIZE})) coll=true;
+                            for(let g of newGems) if(rectCollide(fallbackGem, g)) coll=true;
+                            if(!coll) {
+                                newGems.push(fallbackGem);
+                                placed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if(!placed) newGems.push({ x: 100 + i*40, y: 100, w: GEM_SIZE, h: GEM_SIZE }); // 最终保底
+                }
+            }
+            return newGems;
+        }
+        
+        // ---------- 重置游戏 ----------
+        function resetGame() {
+            gameActive = true;
+            winFlag = false;
+            loseFlag = false;
+            score = 0;
+            updateScoreUI();
+            
+            // 重置玩家位置 (安全区域)
+            player.x = WIDTH/2 - PLAYER_SIZE/2;
+            player.y = HEIGHT/2 - PLAYER_SIZE/2;
+            // 确保玩家不越界
+            clampEntity(player, WIDTH, HEIGHT);
+            
+            // 重置敌人 (两个红色魔像，不同位置，避免与玩家初始重叠)
+            enemies = [
+                { x: 120, y: 480, w: ENEMY_SIZE, h: ENEMY_SIZE },
+                { x: 620, y: 80, w: ENEMY_SIZE, h: ENEMY_SIZE }
+            ];
+            // 额外确保敌人不与玩家初始位置重叠 (如果碰巧重叠就微调)
+            enemies.forEach(enemy => {
+                if(rectCollide(enemy, {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE})) {
+                    enemy.x = (enemy.x + 70) % (WIDTH - ENEMY_SIZE);
+                    enemy.y = (enemy.y + 50) % (HEIGHT - ENEMY_SIZE);
+                    clampEntity(enemy, WIDTH, HEIGHT);
+                }
+                clampEntity(enemy, WIDTH, HEIGHT);
+            });
+            
+            // 生成星星数量 (共8颗)
+            const GEM_COUNT = 8;
+            gems = generateGems(GEM_COUNT);
+            
+            // 二次保险: 确保所有星星不与玩家/敌人初始重叠
+            gems = gems.filter(g => {
+                if(rectCollide(g, {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE})) return false;
+                for(let e of enemies) if(rectCollide(g, {x: e.x, y: e.y, w: ENEMY_SIZE, h: ENEMY_SIZE})) return false;
+                return true;
+            });
+            // 如果过滤后数量不足, 补充
+            if(gems.length < GEM_COUNT) {
+                let need = GEM_COUNT - gems.length;
+                let extra = generateGems(need);
+                gems.push(...extra);
+            }
+            // 限制最多16个以免溢出
+            if(gems.length > GEM_COUNT) gems = gems.slice(0, GEM_COUNT);
+            
+            updateGemsUI();
+            updateStatusText();
+        }
+        
+        // ---------- UI 更新函数 ----------
+        function updateScoreUI() {
+            document.getElementById('scoreValue').innerText = score;
+        }
+        function updateGemsUI() {
+            document.getElementById('gemsLeft').innerText = gems.length;
+        }
+        function updateStatusText() {
+            const statusDiv = document.getElementById('gameStatusText');
+            if(winFlag) {
+                statusDiv.innerText = '✨ 胜利！ ✨';
+                statusDiv.classList.add('win');
+                statusDiv.classList.remove('lose');
+            } else if(loseFlag) {
+                statusDiv.innerText = '💀 游戏结束 💀';
+                statusDiv.classList.add('lose');
+                statusDiv.classList.remove('win');
+            } else {
+                statusDiv.innerText = '⚔️ 冒险中 ⚔️';
+                statusDiv.classList.remove('win', 'lose');
+            }
+        }
+        
+        // 胜利逻辑
+        function checkVictory() {
+            if(gems.length === 0 && gameActive === true && !winFlag && !loseFlag) {
+                gameActive = false;
+                winFlag = true;
+                updateStatusText();
+            }
+        }
+        
+        // 玩家与敌人碰撞 (游戏结束)
+        function checkPlayerDeath() {
+            if(!gameActive) return;
+            const playerRect = {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE};
+            for(let i = 0; i < enemies.length; i++) {
+                const enemyRect = {x: enemies[i].x, y: enemies[i].y, w: ENEMY_SIZE, h: ENEMY_SIZE};
+                if(rectCollide(playerRect, enemyRect)) {
+                    gameActive = false;
+                    loseFlag = true;
+                    updateStatusText();
+                    return;
+                }
+            }
+        }
+        
+        // 收集星星
+        function collectGems() {
+            if(!gameActive) return;
+            const playerRect = {x: player.x, y: player.y, w: PLAYER_SIZE, h: PLAYER_SIZE};
+            let collected = false;
+            for(let i = gems.length-1; i >= 0; i--) {
+                if(rectCollide(playerRect, gems[i])) {
+                    gems.splice(i,1);
+                    score++;
+                    collected = true;
+                    updateScoreUI();
+                    updateGemsUI();
+                }
+            }
+            if(collected) {
+                // 收集音效感 (无声音，但闪一下就好)
+                checkVictory();
+            }
+        }
+        
+        // ---------- 敌人AI: 向玩家方向追逐 (像素风简单追逐) ----------
+        function updateEnemies() {
+            if(!gameActive) return;
+            const playerCenterX = player.x + PLAYER_SIZE/2;
+            const playerCenterY = player.y + PLAYER_SIZE/2;
+            
+            for(let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                const enemyCenterX = e.x + ENEMY_SIZE/2;
+                const enemyCenterY = e.y + ENEMY_SIZE/2;
+                
+                let dx = playerCenterX - enemyCenterX;
+                let dy = playerCenterY - enemyCenterY;
+                const length = Math.hypot(dx, dy);
+                if(length > 0.01) {
+                    dx /= length;
+                    dy /= length;
+                }
+                // 移动
+                e.x += dx * ENEMY_SPEED;
+                e.y += dy * ENEMY_SPEED;
+                // 边界限制
+                clampEntity(e, WIDTH, HEIGHT);
+            }
+        }
+        
+        // ---------- 玩家移动 (基于键盘) ----------
+        function updatePlayer() {
+            if(!gameActive) return;
+            let moveX = 0, moveY = 0;
+            // 方向键 + WASD
+            if(keys.ArrowUp || keys.w) moveY -= 1;
+            if(keys.ArrowDown || keys.s) moveY += 1;
+            if(keys.ArrowLeft || keys.a) moveX -= 1;
+            if(keys.ArrowRight || keys.d) moveX += 1;
+            
+            if(moveX !== 0 || moveY !== 0) {
+                const len = Math.hypot(moveX, moveY);
+                moveX = moveX / len;
+                moveY = moveY / len;
+                player.x += moveX * PLAYER_SPEED;
+                player.y += moveY * PLAYER_SPEED;
+                // 边界限制
+                clampEntity(player, WIDTH, HEIGHT);
+            }
+        }
+        
+        // ---------- 每一帧逻辑更新 ----------
+        function updateGame() {
+            if(gameActive && !winFlag && !loseFlag) {
+                // 1. 移动玩家
+                updatePlayer();
+                // 2. 敌人追逐
+                updateEnemies();
+                // 3. 收集星星 (碰撞检测)
+                collectGems();
+                // 4. 死亡检测 (必须在移动和收集之后)
+                checkPlayerDeath();
+                // 5. 再次确保胜利状态 (收集后可能清零)
+                checkVictory();
+                // 如果胜利或死亡导致的标志变更，同步UI
+                if(winFlag || loseFlag) {
+                    updateStatusText();
+                }
+                updateGemsUI();
+            }
+        }
+        
+        // ---------- 华丽像素风格绘图 ----------
+        function drawPixelatedBackground() {
+            // 网格大地 + 像素草地纹理
+            for(let i = 0; i < WIDTH; i += 32) {
+                for(let j = 0; j < HEIGHT; j += 32) {
+                    ctx.fillStyle = ((i/32 + j/32) % 2 === 0) ? '#2a3f2f' : '#1f3326';
+                    ctx.fillRect(i, j, 32, 32);
+                    // 噪点像素
+                    ctx.fillStyle = '#3d5a3e';
+                    ctx.fillRect(i+4, j+12, 3, 3);
+                    ctx.fillRect(i+20, j+24, 2, 4);
+                }
+            }
+            // 装饰小草丛
+            ctx.fillStyle = '#5f874b';
+            for(let k = 0; k < 60; k++) {
+                ctx.fillRect((k*131)%WIDTH, (k*57)%HEIGHT, 3, 5);
+            }
+        }
+        
+        function drawPlayer() {
+            // 像素勇者 (蓝衣 + 金色头发)
+            const px = player.x;
+            const py = player.y;
+            ctx.fillStyle = '#3e6bcf';
+            ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
+            // 像素眼睛
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(px+6, py+6, 5, 5);
+            ctx.fillRect(px+15, py+6, 5, 5);
+            ctx.fillStyle = '#1e1e2e';
+            ctx.fillRect(px+7, py+7, 3, 3);
+            ctx.fillRect(px+16, py+7, 3, 3);
+            // 头盔/头发
+            ctx.fillStyle = '#d4af37';
+            ctx.fillRect(px+4, py+2, 18, 6);
+            // 披风
+            ctx.fillStyle = '#b32d2d';
+            ctx.fillRect(px+20, py+14, 6, 12);
+            // 剑柄
+            ctx.fillStyle = '#aa8c54';
+            ctx.fillRect(px+2, py+18, 4, 8);
+        }
+        
+        function drawEnemy(enemy) {
+            const ex = enemy.x;
+            const ey = enemy.y;
+            ctx.fillStyle = '#b91c1c';
+            ctx.fillRect(ex, ey, ENEMY_SIZE, ENEMY_SIZE);
+            // 邪恶红眼
+            ctx.fillStyle = '#0a0a12';
+            ctx.fillRect(ex+5, ey+8, 6, 6);
+            ctx.fillRect(ex+15, ey+8, 6, 6);
+            ctx.fillStyle = '#ff5e5e';
+            ctx.fillRect(ex+6, ey+9, 3, 3);
+            ctx.fillRect(ex+16, ey+9, 3, 3);
+            // 尖角
+            ctx.fillStyle = '#441111';
+            ctx.beginPath();
+            ctx.moveTo(ex+5, ey-3);
+            ctx.lineTo(ex+13, ey+2);
+            ctx.lineTo(ex+21, ey-3);
+            ctx.fill();
+            // 眉骨
+            ctx.fillStyle = '#2f0000';
+            ctx.fillRect(ex+3, ey+6, 20, 3);
+        }
+        
+        function drawGem(gem) {
+            const gx = gem.x;
+            const gy = gem.y;
+            // 闪烁星星像素
+            ctx.fillStyle = '#f5d742';
+            ctx.fillRect(gx, gy, GEM_SIZE, GEM_SIZE);
+            ctx.fillStyle = '#ffb347';
+            ctx.fillRect(gx+4, gy+4, 8, 8);
+            ctx.fillStyle = '#fff2a0';
+            ctx.fillRect(gx+7, gy+2, 2, 12);
+            ctx.fillRect(gx+2, gy+7, 12, 2);
+            // 小高光
+            ctx.fillStyle = '#ffffbb';
+            ctx.fillRect(gx+3, gy+3, 3, 3);
+        }
+        
+        function drawUItexts() {
+            // 额外像素风格文字装饰
+            ctx.font = 'bold 14px "Courier New", monospace';
+            ctx.fillStyle = '#cbd5ff';
+            ctx.shadowBlur = 0;
+            ctx.fillText("⚔️ 躲避魔像 收集星光 ⚔️", 18, 38);
+            ctx.font = '10px monospace';
+            ctx.fillStyle = '#aab3d0';
+            ctx.fillText("PIXEL REALM", WIDTH-110, 28);
+            // 胜利/失败额外覆盖动画
+            if(winFlag) {
+                ctx.font = 'bold 28px "Courier New", monospace';
+                ctx.fillStyle = '#fbffb9';
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = '#88ff66';
+                ctx.fillText("★ VICTORY ★", WIDTH/2-100, HEIGHT/2-60);
+                ctx.font = '14px monospace';
+                ctx.fillStyle = '#f7f0a0';
+                ctx.fillText("press [RESTART] or click button", WIDTH/2-150, HEIGHT/2+20);
+            } else if(loseFlag) {
+                ctx.font = 'bold 28px "Courier New", monospace';
+                ctx.fillStyle = '#ffa098';
+                ctx.shadowBlur = 0;
+                ctx.fillText("GAME OVER", WIDTH/2-85, HEIGHT/2-50);
+                ctx.font = '12px monospace';
+                ctx.fillStyle = '#ffbba0';
+                ctx.fillText("▶ 点击重来按钮继续冒险 ◀", WIDTH/2-140, HEIGHT/2+30);
+            }
+            ctx.shadowBlur = 0;
+        }
+        
+        // 全部渲染
+        function render() {
+            // 1. 背景
+            drawPixelatedBackground();
+            // 2. 星星 (闪烁光晕)
+            for(let g of gems) {
+                drawGem(g);
+            }
+            // 3. 敌人
+            for(let e of enemies) {
+                drawEnemy(e);
+            }
+            // 4. 玩家
+            drawPlayer();
+            // 5. 界面装饰文字
+            drawUItexts();
+            // 额外显示剩余星星数量小图标
+            ctx.font = 'bold 14px monospace';
+            ctx.fillStyle = '#ffe0a3';
+            ctx.fillText(`⭐ ${score}  / 8`, 20, 78);
+        }
+        
+        // ---------- 动画循环 ----------
+        function gameLoop() {
+            updateGame();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // ---------- 键盘事件绑定 ----------
+        function handleKeyDown(e) {
+            const key = e.key;
+            if (keys.hasOwnProperty(key)) {
+                e.preventDefault();
+                keys[key] = true;
+            }
+            // 按R键重置游戏 (不管游戏状态)
+            if(key === 'r' || key === 'R') {
+                e.preventDefault();
+                resetGame();
+            }
+        }
+        
+        function handleKeyUp(e) {
+            const key = e.key;
+            if (keys.hasOwnProperty(key)) {
+                e.preventDefault();
+                keys[key] = false;
+            }
+        }
+        
+        // 窗口失焦时重置按键，避免卡方向
+        function resetKeys() {
+            for(let k in keys) {
+                keys[k] = false;
+            }
+        }
+        
+        // ---------- 初始化入口 ----------
+        function init() {
+            resetGame();      // 初始生成所有物体
+            // 事件
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
+            window.addEventListener('blur', resetKeys);
+            document.getElementById('resetButton').addEventListener('click', () => {
+                resetGame();
+            });
+            // 开始循环
+            gameLoop();
+        }
+        
+        // 开始！
+        init();
+    })();
+</script>
+</body>
+</html>

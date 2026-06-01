@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>星尘猎人 - Stardust Hunter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="game-wrapper">
+    <div class="title-bar">
+        <div>
+            <h1>Stardust Hunter</h1>
+            <div class="subtitle">星尘猎人</div>
+        </div>
+    </div>
+    <div class="canvas-frame">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+    <div class="hud-panel">
+        <div class="stat-card score">
+            <div class="icon">⭐</div>
+            <div class="info">
+                <div class="label">得分</div>
+                <div class="value" id="scoreValue">0</div>
+            </div>
+        </div>
+        <div class="stat-card gems">
+            <div class="icon">💎</div>
+            <div class="info">
+                <div class="label">剩余星尘</div>
+                <div class="value" id="gemsLeft">0</div>
+            </div>
+        </div>
+        <div class="stat-card status">
+            <div class="icon">🛡️</div>
+            <div class="info">
+                <div class="label">状态</div>
+                <div class="value" id="gameStatusText">任务进行中</div>
+            </div>
+        </div>
+        <button class="btn-restart" id="resetButton"><span>↻ 重新开始</span></button>
+    </div>
+    <div class="controls-hint">
+        <div class="key-group">
+            <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span>
+        </div>
+        <span class="hint-text">或</span>
+        <div class="key-group">
+            <span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span>
+        </div>
+        <div class="hint-divider"></div>
+        <span class="hint-text">躲避暗影魔像</span>
+        <div class="hint-divider"></div>
+        <span class="hint-text">收集全部星尘获胜</span>
+    </div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
